@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Anime Search & Showcase</title>
+        <link href="https://fonts.cdnfonts.com/css/sf-pro-display" rel="stylesheet">
+        <link rel="stylesheet" href="./components.css">
+        <link rel="stylesheet" href="./style.css">
+    </head>
+    <body>
+
+        <!-- HEADER & SEARCH BAR -->
+        <header class="search-container">
+            <!-- Form mengarah ke search.html -->
+            <form class="search-bar" id="search-form" action="search.html" method="GET">
+                <input type="text" name="q" id="search-input" placeholder="Search anime..." aria-label="Search anime" required />
+                <button type="submit" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                        <path d="M10 2a8 8 0 015.29 13.71l4.5 4.5a1 1 0 01-1.42 1.42l-4.5-4.5A8 8 0 1110 2zm0 2a6 6 0 100 12 6 6 0 000-12z"/>
+                    </svg>
+                </button>
+            </form>
+        </header>
+
+        <main class="main-content">
+            <!-- CAROUSEL SHOWCASE -->
+            <section id="carousel-section" class="carousel-container">
+                <button class="nav-btn prev-btn" aria-label="Previous Slide">&#10094;</button>
+                <div class="carousel-wrapper">
+                    <div class="carousel-track"></div>
+                </div>
+                <button class="nav-btn next-btn" aria-label="Next Slide">&#10095;</button>
+            </section>
+        </main>
+
+        <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+        <script src="script.js"></script>
+    </body>
+</html>

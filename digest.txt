@@ -1,0 +1,632 @@
+Directory structure:
+└── animesearch/
+    ├── README.md
+    ├── components.css
+    ├── index.html
+    ├── script.js
+    └── style.css
+
+================================================
+FILE: README.md
+================================================
+# Aryaslam.github.io
+
+My personal Portfolio
+
+
+
+================================================
+FILE: components.css
+================================================
+.drop-shadow {
+    background-color: black !important;
+    box-shadow:
+            0 1px 3px 0 rgba(0, 0, 0, 0.1),        /* Layer 1: Subtle edge */
+            0 8px 16px -4px rgba(0, 0, 0, 0.08),    /* Layer 2: Soft ambient */
+            0 30px 10px -10px rgba(0, 0, 0, 0.04);  /* Layer 3: Deep elevation */
+}
+
+
+
+================================================
+FILE: index.html
+================================================
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Anime Search & Showcase</title>
+        <link href="https://fonts.cdnfonts.com/css/sf-pro-display" rel="stylesheet">
+        <link rel="stylesheet" href="./components.css">
+        <link rel="stylesheet" href="./style.css">
+    </head>
+    <body>
+
+        <!-- HEADER & SEARCH BAR -->
+        <header class="search-container">
+            <form class="search-bar" id="search-form">
+                <input type="text" id="search-input" placeholder="Search anime..." aria-label="Search anime" />
+                <button type="submit" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                        <path d="M10 2a8 8 0 015.29 13.71l4.5 4.5a1 1 0 01-1.42 1.42l-4.5-4.5A8 8 0 1110 2zm0 2a6 6 0 100 12 6 6 0 000-12z"/>
+                    </svg>
+                </button>
+            </form>
+        </header>
+
+        <main class="main-content">
+            <!-- VIEW 1: CAROUSEL SHOWCASE (TAMPIL DI HOME) -->
+            <section id="carousel-section" class="carousel-container">
+                <button class="nav-btn prev-btn" aria-label="Previous Slide">&#10094;</button>
+                <div class="carousel-wrapper">
+                    <div class="carousel-track"></div>
+                </div>
+                <button class="nav-btn next-btn" aria-label="Next Slide">&#10095;</button>
+            </section>
+
+            <!-- VIEW 2: SEARCH RESULTS GRID (TAMPIL SAAT CARI ANIME) -->
+            <section id="results-section" class="results-grid" style="display: none;"></section>
+        </main>
+
+    </body>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="script.js"></script>
+</html>
+
+
+
+================================================
+FILE: script.js
+================================================
+$(document).ready(function () {
+  const API_BASE_URL = 'https://api.jikan.moe/v4';
+
+  // State variabel Carousel
+  let isMoving = false;
+  let isDragging = false;
+  let startX = 0;
+  let currentTranslate = 0;
+  let prevTranslate = 0;
+
+  function getQueryFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('q');
+  }
+
+  function updateURL(query) {
+    const newUrl = window.location.pathname + '?q=' + encodeURIComponent(query);
+    window.history.pushState({ path: newUrl }, '', newUrl);
+  }
+
+  // --- AJAX RETRY MECHANISM ---
+  function ajaxWithRetry(options, retries = 2, delay = 1500) {
+    return $.ajax({
+      ...options,
+      timeout: 8000
+    }).catch(function (error) {
+      if (retries > 0) {
+        console.warn(`Server busy (${error.status}). Retrying...`);
+        return new Promise((resolve) => setTimeout(resolve, delay)).then(() =>
+          ajaxWithRetry(options, retries - 1, delay)
+        );
+      }
+      return Promise.reject(error);
+    });
+  }
+
+  // --- LOGIKA CAROUSEL SHOWCASE (HOME) ---
+  function loadTopAnimeCarousel() {
+    $('#results-section').hide();
+    $('#carousel-section').show();
+
+    const $track =$('.carousel-track');
+    if ($track.children().length > 0) return; // Kalau carousel sudah dimuat, tidak usah fetch ulang
+
+    $track.html('<p style="text-align:center; width:100%;">Memuat Top Anime...</p>');
+
+    ajaxWithRetry({
+      url: `${API_BASE_URL}/top/anime?limit=10`,
+      method: 'GET'
+    })
+    .then(function (response) {
+      const animeList = response.data;
+      $track.empty();
+
+      animeList.forEach(function (anime) {
+        const category = anime.type || 'Anime';
+        const description = anime.synopsis
+          ? anime.synopsis
+          : 'No description available.';
+
+        const cardHtml = `
+          <article class="card">
+          <div class="card-image">
+          <img src="${anime.images.jpg.large_image_url}" alt="${anime.title}" draggable="false">
+          </div>
+          <div class="card-content">
+          <span class="card-category">${category} • ⭐ ${anime.score || 'N/A'}</span>
+          <h3 class="card-title">${anime.title}</h3>
+          <p class="card-description">${description}</p>
+          </div>
+          </article>
+          `;
+        $track.append(cardHtml);
+      });
+
+      $track.prepend($track.children().last());
+      updateCenterPosition();
+      initCarouselEvents();
+    })
+    .catch(function () {
+      $track.html('<p style="text-align:center; width:100%;">Gagal memuat carousel. Coba refresh.</p>');
+    });
+  }
+
+  // Posisi Center Carousel
+  function getShiftDistance() {
+    const $firstCard =$('.carousel-track .card').first();
+    if (!$firstCard.length) return 0;
+    return $firstCard[0].getBoundingClientRect().width + 16;
+  }
+
+  function getCenterOffset() {
+    const shiftDistance = getShiftDistance();
+    const $firstCard =$('.carousel-track .card').first();
+    if (!$firstCard.length) return 0;
+
+    const wrapperWidth = $('.carousel-wrapper').width() || 0;
+    const singleCardWidth = $firstCard[0].getBoundingClientRect().width;
+    const centerMargin = (wrapperWidth - singleCardWidth) / 2;
+    return -(shiftDistance - centerMargin);
+  }
+
+  function updateCenterPosition() {
+    const offset = getCenterOffset();
+    currentTranslate = offset;
+    prevTranslate = offset;
+    $('.carousel-track').css('left', offset + 'px');
+  }
+
+  function moveNext() {
+    if (isMoving) return;
+    isMoving = true;
+    const shiftDistance = getShiftDistance();
+
+    $('.carousel-track').animate({ left: `-=${shiftDistance}px` }, 300, function () {
+      $(this).append($(this).children().first());
+      updateCenterPosition();
+      isMoving = false;
+    });
+  }
+
+  function movePrev() {
+    if (isMoving) return;
+    isMoving = true;
+    const shiftDistance = getShiftDistance();
+    const $track =$('.carousel-track');
+
+    $track.animate({ left: `+=${shiftDistance}px` }, 300, function () {
+      $track.prepend($track.children().last());
+      updateCenterPosition();
+      isMoving = false;
+    });
+  }
+
+  function initCarouselEvents() {
+    $('.next-btn').off('click').on('click', moveNext);$('.prev-btn').off('click').on('click', movePrev);
+
+    const track = document.querySelector('.carousel-track');
+    if (!track) return;
+
+    function getPositionX(event) {
+      return event.type.includes('touch') ? event.touches[0].clientX : event.clientX;
+    }
+
+    function dragStart(event) {
+      if (isMoving) return;
+      isDragging = true;
+      startX = getPositionX(event);
+      prevTranslate = currentTranslate;
+      $('.carousel-track').css('transition', 'none');
+    }
+
+    function dragMove(event) {
+      if (!isDragging) return;
+      const currentPosition = getPositionX(event);
+      const diff = currentPosition - startX;
+      currentTranslate = prevTranslate + diff;
+      $('.carousel-track').css('left', currentTranslate + 'px');
+    }
+
+    function dragEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+      const movedBy = currentTranslate - prevTranslate;
+
+      if (movedBy < -50) moveNext();
+        else if (movedBy > 50) movePrev();
+          else {
+            $('.carousel-track').animate({ left: prevTranslate + 'px' }, 200, function () {
+              currentTranslate = prevTranslate;
+            });
+          }
+    }
+
+    track.addEventListener('touchstart', dragStart, { passive: true });
+    track.addEventListener('touchmove', dragMove, { passive: true });
+    track.addEventListener('touchend', dragEnd);
+    track.addEventListener('mousedown', dragStart);
+    track.addEventListener('mousemove', dragMove);
+    track.addEventListener('mouseup', dragEnd);
+    track.addEventListener('mouseleave', dragEnd);
+  }
+
+  $(window).on('resize', function () {
+    if ($('#carousel-section').is(':visible') && !isMoving && !isDragging) {
+      updateCenterPosition();
+    }
+  });
+
+  // --- LOGIKA PENCARIAN (GRID) ---
+  function fetchAnimeResults(query) {
+    $('#carousel-section').hide();
+    const $grid =$('#results-section');
+    $grid.show().html(`
+      <div class="loading-state">
+      <p>Mencari anime "${query}"...</p>
+      </div>
+      `);
+
+    ajaxWithRetry({
+      url: `${API_BASE_URL}/anime`,
+      method: 'GET',
+      data: { q: query, limit: 9 }
+    })
+    .then(function (response) {
+      const animeList = response.data;
+      $grid.empty();
+
+      if (!animeList || animeList.length === 0) {
+        $grid.html('<p class="empty-state">Anime tidak ditemukan.</p>');
+        return;
+      }
+
+      animeList.forEach(function (anime, index) {
+        const category = anime.type || 'TV Show';
+        const description = anime.synopsis ? anime.synopsis : 'No description available.';
+        const isWide = (index === 3 || index === 6) ? 'card-wide' : '';
+
+        const cardHtml = `
+          <article class="card ${isWide}">
+          <div class="card-image">
+          <img src="${anime.images.jpg.large_image_url}" alt="${anime.title}">
+          </div>
+          <div class="card-content">
+          <span class="card-category">${category} • ⭐ ${anime.score || 'N/A'}</span>
+          <h3 class="card-title">${anime.title}</h3>
+          <p class="card-description">${description}</p>
+          </div>
+          </article>
+          `;
+        $grid.append(cardHtml);
+      });
+    })
+    .catch(function () {
+      $grid.html('<p class="error-state">Gagal mengambil data dari server.</p>');
+    });
+  }
+
+  function renderHomeState() {
+    window.history.pushState({}, '', window.location.pathname);
+    $('#search-input').val('');
+    loadTopAnimeCarousel();
+  }
+
+  // --- INITIALIZATION ---
+  const urlQuery = getQueryFromURL();
+  if (urlQuery) {
+    $('#search-input').val(urlQuery);
+    fetchAnimeResults(urlQuery);
+  } else {
+    loadTopAnimeCarousel();
+  }
+
+  // Handle Submit Form
+  $('#search-form').on('submit', function (e) {
+    e.preventDefault();
+    const query = $('#search-input').val().trim();
+    if (query) {
+      updateURL(query);
+      fetchAnimeResults(query);
+    } else {
+      renderHomeState();
+    }
+  });
+
+  // Handle Back / Forward Browser
+  $(window).on('popstate', function () {
+    const currentQuery = getQueryFromURL();
+    if (currentQuery) {
+      $('#search-input').val(currentQuery);
+      fetchAnimeResults(currentQuery);
+    } else {
+      renderHomeState();
+    }
+  });
+});
+
+
+
+================================================
+FILE: style.css
+================================================
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+    background-color: #f7f9fa;
+    min-height: 100vh;
+}
+
+/* 1. Header Search Bar */
+.search-container {
+    background-color: #46ACC0;
+    padding: 25px 16px 24px;
+    border-radius: 0 0 16px 16px;
+    border-bottom: 10px solid #3E98AA;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.search-bar {
+    display: flex;
+    align-items: center;
+    background-color: #C8523F;
+    border: 2px solid #C8523F;
+    border-radius: 9999px;
+    width: 90%;
+    max-width: 600px;
+    margin: 0 auto;
+    box-shadow:
+        0 6px 0 0 #B04332,
+        0 1px 3px 0 rgba(0, 0, 0, 0.1),
+        0 8px 16px -4px rgba(0, 0, 0, 0.15);
+}
+
+.search-bar input {
+    border: none;
+    outline: none;
+    background-color: #ffffff;
+    border-radius: 9999px 0 0 9999px;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    padding: 12px 16px 12px 20px;
+}
+
+.search-bar button {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #ffffff;
+    flex-shrink: 0;
+    width: 54px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+/* 2. Main Content Wrapper */
+.main-content {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 0 20px;
+}
+
+/* --- CAROUSEL STYLES --- */
+.carousel-container {
+    position: relative;
+    padding: 0 40px;
+    box-sizing: border-box;
+}
+
+.carousel-wrapper {
+    overflow: hidden;
+    width: 100%;
+    padding: 20px 0;
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+}
+
+.carousel-track {
+    display: flex;
+    gap: 16px;
+    position: relative;
+    left: 0;
+    width: 100%;
+    cursor: grab;
+    user-select: none;
+}
+
+.carousel-track:active {
+    cursor: grabbing;
+}
+
+/* --- GRID STYLES --- */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+/* --- CARD GENERAL STYLES --- */
+.card {
+    background-color: #ffffff;
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 8px 16px -4px rgba(0, 0, 0, 0.06);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Ukuran kartu carousel di Desktop */
+.carousel-track .card {
+    flex: 0 0 calc((100% - 32px) / 3);
+    min-width: calc((100% - 32px) / 3);
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+}
+
+.card.card-wide {
+    grid-column: span 2;
+}
+
+.card-image {
+    width: 100%;
+    height: 220px;
+    overflow: hidden;
+}
+
+.card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-content {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.card-category {
+    font-size: 12px;
+    color: #888888;
+    font-weight: 600;
+}
+
+.card-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111111;
+}
+
+.card-description {
+    font-size: 13px;
+    color: #666666;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 40px;
+    background-color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    font-size: 18px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.prev-btn { left: 0; }
+.next-btn { right: 0; }
+
+.loading-state, .empty-state, .error-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px;
+    font-size: 18px;
+    color: #666;
+}
+
+/* 3. MOBILE VIEW */
+@media (max-width: 768px) {
+    .main-content {
+        padding: 0 12px;
+    }
+
+    .carousel-container {
+        padding: 0;
+        height: 80vh;
+    }
+
+    .carousel-wrapper {
+        height: 100%;
+        padding: 0;
+    }
+
+    .carousel-track {
+        height: 100%;
+    }
+
+    .carousel-track .card {
+        flex: 0 0 85%;
+        min-width: 85%;
+        height: 100%;
+    }
+
+    .results-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .results-grid .card, .results-grid .card.card-wide {
+        width: 100%;
+        height: 75vh;
+    }
+
+    .card-image {
+        height: 55%;
+    }
+
+    .card-content {
+        height: 45%;
+        padding: 20px;
+        overflow-y: auto;
+    }
+
+    .card-title {
+        font-size: 24px;
+    }
+
+    .card-description {
+        font-size: 15px;
+        -webkit-line-clamp: 6;
+    }
+}
+
+
