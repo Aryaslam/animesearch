@@ -1,32 +1,38 @@
 $(document).ready(function () {
-  const API_BASE_URL = 'https://api.jikan.moe/v4';
-
   let isMoving = false;
-  let currentTranslate = 0;
 
   function loadTopAnimeCarousel() {
-    const $track = $('.carousel-track');$track.html('<p style="text-align:center; width:100%;">Memuat Top Anime...</p>');
+    const $track = $('.carousel-track');$track.html('<p style="text-align:center; width:100%; color:#666;">Memuat Top Anime...</p>');
 
     $.ajax({
-      url: `${API_BASE_URL}/top/anime?limit=10`,
+      url: 'https://kitsu.io/api/edge/trending/anime',
       method: 'GET'
     })
     .then(function (response) {
       const animeList = response.data;
       $track.empty();
 
+      if (!animeList || animeList.length === 0) {
+        $track.html('<p style="text-align:center; width:100%;">Data anime kosong.</p>');
+        return;
+      }
+
       animeList.forEach(function (anime) {
-        const category = anime.type || 'Anime';
-        const description = anime.synopsis ? anime.synopsis : 'No description available.';
+        const attr = anime.attributes;
+        const title = attr.canonicalTitle || attr.titles.en || 'Untitled';
+        const category = attr.showType || 'Anime';
+        const score = attr.averageRating ? (attr.averageRating / 10).toFixed(1) : 'N/A';
+        const description = attr.synopsis ? attr.synopsis : 'No description available.';
+        const imgUrl = attr.posterImage ? attr.posterImage.large : 'https://via.placeholder.com/300x400';
 
         const cardHtml = `
           <article class="card">
           <div class="card-image">
-          <img src="${anime.images.jpg.large_image_url}" alt="${anime.title}" draggable="false">
+          <img src="${imgUrl}" alt="${title}" draggable="false">
           </div>
           <div class="card-content">
-          <span class="card-category">${category} • ⭐ ${anime.score || 'N/A'}</span>
-          <h3 class="card-title">${anime.title}</h3>
+          <span class="card-category">${category} • ⭐ ${score}</span>
+          <h3 class="card-title">${title}</h3>
           <p class="card-description">${description}</p>
           </div>
           </article>
@@ -39,8 +45,8 @@ $(document).ready(function () {
       initCarouselEvents();
     })
     .catch(function (err) {
-      console.error('Error Jikan API:', err);
-      $track.html('<p style="text-align:center; width:100%;">Gagal memuat carousel dari Jikan API.</p>');
+      console.error('Error Kitsu API:', err);
+      $track.html('<p style="text-align:center; width:100%;">Gagal mengambil data dari Kitsu API.</p>');
     });
   }
 
@@ -63,7 +69,6 @@ $(document).ready(function () {
 
   function updateCenterPosition() {
     const offset = getCenterOffset();
-    currentTranslate = offset;
     $('.carousel-track').css('left', offset + 'px');
   }
 
@@ -100,6 +105,5 @@ $(document).ready(function () {
     if (!isMoving) updateCenterPosition();
   });
 
-  // Jalankan Carousel di Home
   loadTopAnimeCarousel();
 });
